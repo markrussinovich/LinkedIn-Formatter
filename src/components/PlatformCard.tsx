@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Loader, Pencil, RotateCcw, Sparkles } from 'lucide-react';
 
-import { copyPlainText } from '../lib/clipboard';
+import { copyLinkedInText, copyPlainText } from '../lib/clipboard';
 import { exportText, type EditorNode } from '../lib/exportText';
 import { lastUrlInText } from '../lib/linkPreview';
 import { parseMentionSegments } from '../lib/mentions';
@@ -140,7 +140,7 @@ export function PlatformCard({
 
   async function handleCopy() {
     try {
-      await copyPlainText(render.text);
+      await copyPlatformText();
       flash('copied');
     } catch {
       flash('error');
@@ -155,7 +155,7 @@ export function PlatformCard({
     }
 
     try {
-      await copyPlainText(render.text);
+      await copyPlatformText();
       const composerWindow = window.open(composer.url(render.text), '_blank');
 
       if (composerWindow) {
@@ -166,6 +166,10 @@ export function PlatformCard({
     } catch {
       flash('error');
     }
+  }
+
+  function copyPlatformText() {
+    return spec.id === 'linkedin' ? copyLinkedInText(render.text) : copyPlainText(render.text);
   }
 
   return (

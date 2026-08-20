@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { getCharacterCountStatus } from '../constants';
+import { threadsSpec } from '../platforms/threads';
 import { xSpec } from '../platforms/x';
 import { defaultLlmConfig } from './config';
 
@@ -24,6 +26,34 @@ describe('generateFit deterministic length check', () => {
     expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 
+  it('retries an under-cap result that would still leave the card in warning state', async () => {
+    mockGenerate.mockReset();
+    mockGenerate
+      .mockResolvedValueOnce('x'.repeat(240)) // Under 280, but inside the 50-character warning margin.
+      .mockResolvedValueOnce('x'.repeat(220));
+
+    const result = await generateFit({ config, spec: xSpec, masterText: 'long' });
+
+    expect(mockGenerate).toHaveBeenCalledTimes(2);
+    expect(result.count).toBe(220);
+    expect(getCharacterCountStatus(result.count, xSpec.charLimit, xSpec.warningThreshold)).toBe('normal');
+    expect(mockGenerate.mock.calls[1][0].prompt).toContain('over the 229-character limit for your text');
+  });
+
+  it('does not accept a 488/500 warning-state Threads result', async () => {
+    mockGenerate.mockReset();
+    mockGenerate
+      .mockResolvedValueOnce('x'.repeat(488))
+      .mockResolvedValueOnce('x'.repeat(440));
+
+    const result = await generateFit({ config, spec: threadsSpec, masterText: 'long' });
+
+    expect(mockGenerate).toHaveBeenCalledTimes(2);
+    expect(result.count).toBe(440);
+    expect(getCharacterCountStatus(result.count, threadsSpec.charLimit, threadsSpec.warningThreshold)).toBe('normal');
+    expect(mockGenerate.mock.calls[1][0].prompt).toContain('over the 449-character limit for your text');
+  });
+
   it('regenerates when the model returns an over-limit version, then succeeds', async () => {
     mockGenerate.mockReset();
     mockGenerate
@@ -36,7 +66,7 @@ describe('generateFit deterministic length check', () => {
     expect(result.withinLimit).toBe(true);
     expect(result.text).toBe('Now it fits.');
     // The retry prompt must carry the over-limit feedback.
-    expect(mockGenerate.mock.calls[1][0].prompt).toContain('over the 280');
+    expect(mockGenerate.mock.calls[1][0].prompt).toContain('over the 229');
   });
 
   it('deterministically trims to fit when every attempt exceeds the limit', async () => {

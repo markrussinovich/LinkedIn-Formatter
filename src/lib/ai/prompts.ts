@@ -44,7 +44,7 @@ function withStyle(baseSystem: string, style?: string): string {
 export function buildFitRequest(spec: PlatformSpec, masterText: string, style?: string, limit: number = spec.charLimit): LlmRequest {
   const reserved = spec.charLimit - limit;
   const reservedNote = reserved > 0
-    ? ` Note: ${reserved} characters are reserved for attached links, so your text must fit within ${limit}.`
+    ? ` Keep ${reserved} characters of headroom below the platform's hard limit, so your text must fit within ${limit}.`
     : '';
 
   // The platform unfurls a preview for the last URL in the post, so length

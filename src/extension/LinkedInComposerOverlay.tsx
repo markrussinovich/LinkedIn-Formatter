@@ -6,7 +6,7 @@ import { DraftHistoryPanel } from '../components/DraftHistoryPanel';
 import { EditorShell } from '../components/EditorShell';
 import { HelpPanel } from '../components/HelpPanel';
 import { LinkedInPreview } from '../components/LinkedInPreview';
-import { copyPlainText } from '../lib/clipboard';
+import { copyLinkedInText } from '../lib/clipboard';
 import { exportLinkedInText, getLinkedInCharacterSummary, type EditorNode } from '../lib/exportLinkedInText';
 import { flattenMentionTokens } from '../lib/mentions';
 import type { FeedPreviewMode } from '../lib/feedPreview';
@@ -142,7 +142,7 @@ export function LinkedInComposerOverlay({ open, onClose, onPost }: LinkedInCompo
 
   async function handleCopy() {
     try {
-      await copyPlainText(flattenedText);
+      await copyLinkedInText(flattenedText);
       setCopyStatus({ state: 'idle', message: '' });
       setStatus('copied');
       setStatusMessage('Copied');

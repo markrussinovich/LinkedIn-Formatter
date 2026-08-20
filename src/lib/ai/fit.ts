@@ -1,4 +1,5 @@
 import type { EditorNode } from '../exportText';
+import { WARNING_MARGIN } from '../constants';
 import { markdownToTipTap } from '../markdownToTipTap';
 import { renderForPlatform } from '../platforms';
 import type { PlatformSpec } from '../platforms/types';
@@ -36,7 +37,7 @@ function measure(text: string, spec: PlatformSpec): { doc: EditorNode; count: nu
 // and re-prompts the model to shorten until it fits (or attempts run out). The
 // model isn't trusted to count — we verify and feed the real overage back.
 export async function generateFit({ config, spec, masterText, style, signal, maxAttempts = 4 }: FitOptions): Promise<FitResult> {
-  const effectiveLimit = spec.charLimit;
+  const effectiveLimit = Math.max(0, Math.min(spec.warningThreshold - 1, spec.charLimit - WARNING_MARGIN - 1));
   const base = buildFitRequest(spec, masterText, style, effectiveLimit);
   let best: { doc: EditorNode; text: string; count: number } | null = null;
   let feedback = '';

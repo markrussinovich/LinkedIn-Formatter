@@ -27,3 +27,13 @@ export async function copyPlainText(text: string): Promise<void> {
     document.body.removeChild(textarea);
   }
 }
+
+export function prepareLinkedInClipboardText(text: string): string {
+  // LinkedIn collapses truly empty lines on paste. A zero-width space keeps
+  // each authored blank line present without changing its visual appearance.
+  return text.replace(/\n(?=\n)/g, '\n\u200B');
+}
+
+export function copyLinkedInText(text: string): Promise<void> {
+  return copyPlainText(prepareLinkedInClipboardText(text));
+}
