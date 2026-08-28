@@ -28,6 +28,86 @@ interface Suggestion {
   prompt: string;
 }
 
+// Styles that affect where text wraps, copied onto the measuring mirror so it
+// lays out identically to the textarea.
+const MIRROR_STYLE_PROPS = [
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'fontVariant',
+  'letterSpacing',
+  'lineHeight',
+  'textTransform',
+  'textIndent',
+  'wordSpacing',
+  'wordBreak',
+  'overflowWrap',
+  'tabSize',
+] as const;
+
+interface CaretLineInfo {
+  isFirstLine: boolean;
+  isLastLine: boolean;
+}
+
+// Which *visual* line the caret sits on — soft-wrapped lines count too, so a long
+// prompt without newlines still lets ↑/↓ move within it. Measured by mirroring the
+// textarea's text into an off-screen div and reading a zero-width marker's offset.
+function getCaretLineInfo(el: HTMLTextAreaElement): CaretLineInfo {
+  const value = el.value;
+  const caret = el.selectionDirection === 'backward' ? el.selectionStart : el.selectionEnd;
+  const style = getComputedStyle(el);
+  const mirror = document.createElement('div');
+
+  for (const prop of MIRROR_STYLE_PROPS) {
+    mirror.style[prop] = style[prop];
+  }
+
+  mirror.style.position = 'absolute';
+  mirror.style.top = '0';
+  mirror.style.left = '-9999px';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = style.overflowWrap === 'normal' ? 'break-word' : style.overflowWrap;
+  mirror.style.boxSizing = 'content-box';
+  mirror.style.height = 'auto';
+  // Match the text-holding width of the textarea (client width minus padding).
+  const contentWidth =
+    el.clientWidth - parseFloat(style.paddingLeft || '0') - parseFloat(style.paddingRight || '0');
+  mirror.style.width = `${Math.max(contentWidth, 0)}px`;
+
+  const marker = document.createElement('span');
+  marker.textContent = '\u200b';
+  mirror.appendChild(document.createTextNode(value.slice(0, caret)));
+  mirror.appendChild(marker);
+  // A trailing zero-width space keeps a final newline from collapsing.
+  mirror.appendChild(document.createTextNode(`${value.slice(caret)}\u200b`));
+  document.body.appendChild(mirror);
+
+  const parsedLineHeight = parseFloat(style.lineHeight);
+  const lineHeight = Number.isFinite(parsedLineHeight)
+    ? parsedLineHeight
+    : parseFloat(style.fontSize) * 1.2;
+  const caretTop = marker.offsetTop;
+  const contentHeight = mirror.offsetHeight;
+
+  mirror.remove();
+
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0 || contentHeight <= 0) {
+    // Measurement unavailable (e.g. detached/hidden): fall back to newline checks.
+    return {
+      isFirstLine: value.lastIndexOf('\n', caret - 1) === -1,
+      isLastLine: value.indexOf('\n', caret) === -1,
+    };
+  }
+
+  return {
+    isFirstLine: caretTop < lineHeight / 2,
+    isLastLine: caretTop + lineHeight * 1.5 > contentHeight,
+  };
+}
+
 export function AiAssist({ ready, busy, error, onSubmit, onOpenSettings, hasDraft, stylePrompt, sources, onAddSource, onUpdateSource, onRemoveSource }: AiAssistProps) {
   const [instruction, setInstruction] = useState('');
   // Seeded from storage so the ↑/↓ recall survives reloads, and persisted on change.
@@ -36,6 +116,8 @@ export function AiAssist({ ready, busy, error, onSubmit, onOpenSettings, hasDraf
   const [historyIndex, setHistoryIndex] = useState(-1);
   const prevBusy = useRef(busy);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Caret position to apply after a history recall re-renders the textarea.
+  const pendingCaretRef = useRef<number | null>(null);
 
   // Grow the box to fit its content (typed or recalled from history), capped by a
   // max-height in CSS beyond which it scrolls. scrollHeight excludes the border,
@@ -57,6 +139,12 @@ export function AiAssist({ ready, busy, error, onSubmit, onOpenSettings, hasDraf
     el.style.height = `${capped}px`;
     // Only show a scrollbar once the content actually exceeds the max height.
     el.style.overflowY = Number.isFinite(maxHeight) && fullHeight > maxHeight ? 'auto' : 'hidden';
+
+    if (pendingCaretRef.current !== null) {
+      const caret = Math.min(pendingCaretRef.current, el.value.length);
+      el.setSelectionRange(caret, caret);
+      pendingCaretRef.current = null;
+    }
   }, [instruction]);
 
   useEffect(() => {
@@ -97,8 +185,17 @@ export function AiAssist({ ready, busy, error, onSubmit, onOpenSettings, hasDraf
     submitPrompt(instruction);
   }
 
+  function recallPrompt(index: number, value: string) {
+    setHistoryIndex(index);
+    setInstruction(value);
+    // Park the caret at the end so the next ↑/↓ keeps walking history instead of
+    // moving within the recalled multi-line prompt.
+    pendingCaretRef.current = value.length;
+  }
+
   // Enter submits; Shift+Enter inserts a newline. Up/Down walk previously
-  // submitted prompts (most recent first).
+  // submitted prompts (most recent first), but only when the caret is already on
+  // the first/last line — otherwise they move within a multi-line prompt.
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -107,25 +204,22 @@ export function AiAssist({ ready, busy, error, onSubmit, onOpenSettings, hasDraf
     }
 
     if (event.key === 'ArrowUp') {
-      if (history.length === 0) {
+      if (history.length === 0 || !getCaretLineInfo(event.currentTarget).isFirstLine) {
         return;
       }
       event.preventDefault();
       const next = historyIndex === -1 ? history.length - 1 : Math.max(0, historyIndex - 1);
-      setHistoryIndex(next);
-      setInstruction(history[next]);
+      recallPrompt(next, history[next]);
     } else if (event.key === 'ArrowDown') {
-      if (historyIndex === -1) {
+      if (historyIndex === -1 || !getCaretLineInfo(event.currentTarget).isLastLine) {
         return;
       }
       event.preventDefault();
       const next = historyIndex + 1;
       if (next >= history.length) {
-        setHistoryIndex(-1);
-        setInstruction('');
+        recallPrompt(-1, '');
       } else {
-        setHistoryIndex(next);
-        setInstruction(history[next]);
+        recallPrompt(next, history[next]);
       }
     }
   }
