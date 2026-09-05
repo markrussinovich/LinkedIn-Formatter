@@ -336,6 +336,20 @@ describe('linkedinComposer helpers', () => {
     expect(composerTextCoversSegments(composer, [{ kind: 'text', text: 'Different text' }])).toBe(false);
   });
 
+  it('rejects a detached composer even if its stale textContent still covers the draft', () => {
+    // Regression test: if LinkedIn swaps in a new (empty) composer node right
+    // after we write text, the old node is removed from the page but keeps
+    // reporting its last textContent from memory. Verifying against it would
+    // wrongly green-light clicking LinkedIn's real Post button on the new,
+    // empty composer and publish a blank post.
+    document.body.innerHTML = '<div contenteditable="true"><p>Line one</p></div>';
+    const composer = document.querySelector<HTMLElement>('[contenteditable="true"]')!;
+    composer.remove();
+
+    expect(composer.isConnected).toBe(false);
+    expect(composerTextCoversSegments(composer, [{ kind: 'text', text: 'Line one' }])).toBe(false);
+  });
+
   it('ignores mention segments when verifying composer text', () => {
     // Mentions are rewritten into display names, so only the text segments
     // around them can be asserted - but they must appear in order.

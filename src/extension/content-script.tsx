@@ -269,16 +269,35 @@ async function postThroughLinkedIn(text: string, files: File[]): Promise<PostRes
         return finish('failed');
       }
 
-      // Never click Post on unverified text: a mid-bridge focus steal or a
-      // swallowed insert could otherwise publish a truncated post. (The media
-      // path re-verifies above after its re-render window.)
-      const written = findLinkedInComposer() ?? composer;
+      // Never click Post on unverified text: a mid-bridge focus steal, or
+      // LinkedIn swapping the composer's DOM node right after typing (it does
+      // this to re-render its own char counter / link-preview chrome), could
+      // otherwise leave us verifying a detached node that still holds the old
+      // text in memory while the *visible* composer is actually empty — and
+      // then clicking Post on that empty one. Only ever verify against a node
+      // that is still connected to the page; retry the write once if the live
+      // composer turns out to be a different (empty) node than the one we
+      // wrote into. (The media path re-verifies above after its own
+      // re-render window.)
+      let written = await resolveConnectedComposer(composer);
 
-      if (!composerTextCoversSegments(written, segments)) {
+      if (written && written !== composer && !composerTextCoversSegments(written, segments)) {
+        log('composer node changed after insert, re-inserting into the live node');
+        composer = written;
+        writeResult = await writeComposerContent(composer, text, segments);
+        log('write composer content retry result:', writeResult.inserted);
+        mentions.requested = writeResult.mentionsRequested;
+        mentions.applied = writeResult.mentionsApplied;
+        written = await resolveConnectedComposer(composer);
+      }
+
+      if (!written || !composerTextCoversSegments(written, segments)) {
         log('FAILED: composer text does not cover the draft, not clicking Post');
         dumpDomState('post-text-mismatch');
         return finish('failed');
       }
+
+      composer = written;
 
       // Attached media suppresses link previews, so only wait when there is
       // none. Best effort: not every URL unfurls, so a timeout just proceeds.
@@ -368,6 +387,25 @@ function openNativeComposerForPost() {
 
 async function waitForLinkedInComposer() {
   return waitForElement(findLinkedInComposer, 3500);
+}
+
+// Resolves to a composer that is actually attached to the page. A disconnected
+// fallback node is never trusted directly — it can still report its old
+// textContent from memory even though nobody can see it — so this only
+// returns it when the live query can't find anything better, and otherwise
+// polls briefly for the composer LinkedIn swapped in.
+async function resolveConnectedComposer(fallback: HTMLElement): Promise<HTMLElement | null> {
+  const live = findLinkedInComposer();
+
+  if (live) {
+    return live;
+  }
+
+  if (fallback.isConnected) {
+    return fallback;
+  }
+
+  return waitForElement(findLinkedInComposer, 1200);
 }
 
 // Resolves true once media is attached to the composer. Clicks through a media

@@ -588,6 +588,13 @@ export async function setLinkedInComposerSegments(
 // render non-breaking spaces. Mention segments are skipped: LinkedIn rewrites
 // them into display names whose exact text cannot be asserted.
 export function composerTextCoversSegments(composer: HTMLElement, segments: ComposerSegment[]): boolean {
+  // A detached node still reports whatever textContent it held before being
+  // removed from the page, so it can pass this check while the composer the
+  // user (and LinkedIn's Post button) actually sees is empty. Never trust it.
+  if (!composer.isConnected) {
+    return false;
+  }
+
   const haystack = stripAllWhitespace(composer.textContent ?? '');
   let searchFrom = 0;
 
