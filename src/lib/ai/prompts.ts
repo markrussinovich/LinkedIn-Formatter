@@ -1,5 +1,5 @@
 import type { PlatformSpec } from '../platforms/types';
-import { lastUrlInText } from '../linkPreview';
+import { urlsInText } from '../linkPreview';
 
 export interface LlmRequest {
   system: string;
@@ -47,12 +47,15 @@ export function buildFitRequest(spec: PlatformSpec, masterText: string, style?: 
     ? ` Keep ${reserved} characters of headroom below the platform's hard limit, so your text must fit within ${limit}.`
     : '';
 
-  // The platform unfurls a preview for the last URL in the post, so length
-  // trimming must keep that exact link as the final URL — otherwise the preview
-  // card changes or disappears. Earlier URLs may be dropped to save space.
-  const lastUrl = lastUrlInText(masterText);
+  // The platform unfurls a preview for the last URL in the post, and every link
+  // the author put in the draft is deliberate reference material — length
+  // trimming must never be paid for by dropping one.
+  const urls = urlsInText(masterText);
+  const lastUrl = urls[urls.length - 1];
   const urlNote = lastUrl
-    ? ` This post contains a link the platform shows as a preview: keep the last URL (${lastUrl}) exactly as written and leave it as the final link in the post. You may drop earlier URLs to save space, but never alter or remove this one.`
+    ? ` The post contains ${urls.length === 1 ? 'a link the author added as a reference' : 'links the author added as references'}: ${urls.join(', ')}. ` +
+      'Every one of these URLs must appear in your version exactly as written — never drop, shorten, swap, or reword a URL to save space, however hard you have to cut. ' +
+      `Keep ${lastUrl} as the final link in the post, since the platform shows it as a preview. Cut other words instead, and add no links that are not listed here.`
     : '';
 
   return {
@@ -60,7 +63,7 @@ export function buildFitRequest(spec: PlatformSpec, masterText: string, style?: 
       'You adapt a social media post for a specific platform. Preserve the author\'s voice, key message, hashtags, and @mentions. ' +
         'Keep any @[Name] mention tokens exactly as written, including the square brackets and the name verbatim — never reword, restyle, or remove them. ' +
         'Preserve the author\'s Markdown formatting — keep **bold**, *italic*, and list structure on the same content, and only drop it where the platform forbids it or the text must change to fit. ' +
-        'When the post contains links, keep the last URL intact and as the final link, since the platform previews it. ' +
+        'Never omit a URL the author included: every link in the original must appear verbatim in your version, and the last one must stay last because the platform previews it. Shorten the surrounding words instead. ' +
         'Tighten or restructure as needed so it fits the platform\'s limit. The length limit is a hard requirement. ' +
         'Return ONLY the adapted post text — no preamble, quotes, or explanation.',
       style,
@@ -90,7 +93,7 @@ export function buildOverLimitFeedback(
 
   return (
     `That version was ${previousCount} characters — ${previousCount - limit} over the ${limit}-character limit for your text. ` +
-    `Rewrite it to be at most ${limit} characters. Cut or condense content as needed.${aggressive}\n\n` +
+    `Rewrite it to be at most ${limit} characters. Cut or condense content as needed, but keep every URL from the original post exactly as written — links are never what you cut.${aggressive}\n\n` +
     `Previous version:\n${previousText}`
   );
 }

@@ -1,5 +1,6 @@
 import type { EditorNode } from '../exportText';
 import { WARNING_MARGIN } from '../constants';
+import { lastUrlInText } from '../linkPreview';
 import { markdownToTipTap } from '../markdownToTipTap';
 import { renderForPlatform } from '../platforms';
 import type { PlatformSpec } from '../platforms/types';
@@ -79,7 +80,9 @@ function measureToResult(text: string, spec: PlatformSpec): { doc: EditorNode; t
 
 // Last-resort deterministic shortener: finds the longest prefix of `text` that
 // renders within `limit` (binary search on the platform's real counting), then
-// backs off to the nearest word boundary so it doesn't cut mid-word.
+// backs off to the nearest word boundary so it doesn't cut mid-word. A URL the
+// author referenced is never what gets cut — when the prefix loses the post's
+// final link, the text is shortened further to make room for it.
 function trimToLimit(text: string, spec: PlatformSpec, limit: number): { doc: EditorNode; text: string; count: number } {
   const initial = measure(text, spec);
 
@@ -87,13 +90,32 @@ function trimToLimit(text: string, spec: PlatformSpec, limit: number): { doc: Ed
     return { doc: initial.doc, text, count: initial.count };
   }
 
+  const trimmed = longestPrefixWithin(text, spec, limit, '');
+  const lastUrl = lastUrlInText(text);
+
+  if (!lastUrl || trimmed.includes(lastUrl)) {
+    return measureToResult(trimmed, spec);
+  }
+
+  // Only re-add the link if the platform's budget can actually hold it.
+  if (measure(lastUrl, spec).count > limit) {
+    return measureToResult(trimmed, spec);
+  }
+
+  const suffix = `\n\n${lastUrl}`;
+  return measureToResult(`${longestPrefixWithin(trimmed, spec, limit, suffix)}${suffix}`.trimStart(), spec);
+}
+
+// Longest word-boundary prefix of `text` that still fits `limit` once `suffix`
+// (which is kept in full) is appended.
+function longestPrefixWithin(text: string, spec: PlatformSpec, limit: number, suffix: string): string {
   const chars = Array.from(text);
   let lo = 0;
   let hi = chars.length;
 
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
-    const fits = measure(chars.slice(0, mid).join(''), spec).count <= limit;
+    const fits = measure(`${chars.slice(0, mid).join('')}${suffix}`, spec).count <= limit;
 
     if (fits) {
       lo = mid;
@@ -109,5 +131,5 @@ function trimToLimit(text: string, spec: PlatformSpec, limit: number): { doc: Ed
     slice = slice.slice(0, lastSpace).replace(/\s+$/u, '');
   }
 
-  return measureToResult(slice, spec);
+  return slice;
 }

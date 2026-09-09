@@ -84,6 +84,23 @@ describe('generateFit deterministic length check', () => {
     expect(result.count).toBeLessThanOrEqual(xSpec.charLimit);
   });
 
+  it('keeps the referenced link when it has to trim the model\'s best effort', async () => {
+    mockGenerate.mockReset();
+    const overLimit = `${'word '.repeat(80)}https://example.test/reference-article`;
+    mockGenerate
+      .mockResolvedValueOnce(overLimit)
+      .mockResolvedValueOnce(overLimit)
+      .mockResolvedValueOnce(overLimit);
+
+    const result = await generateFit({ config, spec: xSpec, masterText: 'long', maxAttempts: 3 });
+
+    expect(result.withinLimit).toBe(true);
+    expect(result.count).toBeLessThanOrEqual(xSpec.charLimit);
+    // A deterministic prefix cut would have dropped the trailing URL.
+    expect(result.text).toContain('https://example.test/reference-article');
+    expect(result.text.endsWith('https://example.test/reference-article')).toBe(true);
+  });
+
   it('escalates to an aggressive cut after two failed attempts', async () => {
     mockGenerate.mockReset();
     mockGenerate
