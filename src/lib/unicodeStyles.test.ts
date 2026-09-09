@@ -19,6 +19,15 @@ describe('styleText', () => {
     expect(styleText('Code 9', { code: true })).toBe('𝙲𝚘𝚍𝚎 𝟿');
   });
 
+  it('styles the whole code span, including @handles, #tags, and URLs', () => {
+    // Inside code these are literal samples (npm scope, CSS id, sample link),
+    // not real LinkedIn tokens, so the whole span must render monospace instead
+    // of being left half-plain ASCII.
+    for (const sample of ['add pkg@1.0', 'id="x" href="https://a.test"', 'tag #main']) {
+      expect(styleText(sample, { code: true })).not.toMatch(/[A-Za-z0-9]/);
+    }
+  });
+
   it('keeps hashtags, mentions, and URLs parseable when styling surrounding text', () => {
     expect(styleText('Post #LinkedIn @Ada https://example.com', { bold: true })).toBe(
       '𝗣𝗼𝘀𝘁 #LinkedIn @Ada https://example.com',

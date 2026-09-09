@@ -127,4 +127,23 @@ describe('exportText', () => {
 
     expect(exportText(document, { unicodeStyling: false })).toBe('Guide (https://example.com) for @[Ada Lovelace]');
   });
+
+  it('renders a full code span as monospace even around @handles and URLs', () => {
+    // Repro of the bug where the @handle and URL portions of code-marked text
+    // stayed plain ASCII, leaving the preview half-monospace.
+    const handleDoc = doc([
+      paragraph([text('/plugin add ai-native-dev-skills@webmaxru-ai-native-dev', [{ type: 'code' }])]),
+    ]);
+    const urlDoc = doc([
+      paragraph([
+        text('<link rel="ai-catalog" href="https://webmaxru.github.io/.well-known/ai-catalog.json">', [
+          { type: 'code' },
+        ]),
+      ]),
+    ]);
+
+    // The whole span is code, so no raw ASCII letters/digits should leak through.
+    expect(exportText(handleDoc, { unicodeStyling: true })).not.toMatch(/[A-Za-z0-9]/);
+    expect(exportText(urlDoc, { unicodeStyling: true })).not.toMatch(/[A-Za-z0-9]/);
+  });
 });

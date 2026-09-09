@@ -71,6 +71,15 @@ export function styleText(text: string, options: UnicodeStyleOptions = {}): stri
     return '';
   }
 
+  // Code spans render verbatim as monospace. A URL, @handle, or #tag inside code
+  // is a literal code sample (npm scope, CSS id, decorator, sample link), not a
+  // real LinkedIn link/mention/hashtag, so the whole span is styled. For the
+  // other styles we leave those tokens ASCII below so LinkedIn keeps them
+  // clickable/searchable.
+  if (options.code) {
+    return styleSegment(text, options);
+  }
+
   let result = '';
   let lastIndex = 0;
 
