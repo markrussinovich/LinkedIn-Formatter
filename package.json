@@ -15,12 +15,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tiptap/extension-character-count": "^2.27.1",
-    "@tiptap/extension-link": "^2.27.1",
-    "@tiptap/extension-placeholder": "^2.27.1",
-    "@tiptap/extension-underline": "^2.27.2",
-    "@tiptap/react": "^2.27.1",
-    "@tiptap/starter-kit": "^2.27.1",
+    "@tiptap/extension-link": "^3.31.0",
+    "@tiptap/extension-underline": "^3.31.0",
+    "@tiptap/extensions": "^3.31.0",
+    "@tiptap/react": "^3.31.0",
+    "@tiptap/starter-kit": "^3.31.0",
     "lucide-react": "^0.475.0",
     "mammoth": "^1.12.0",
     "marked": "^18.0.5",
@@ -48,8 +47,10 @@
     "minimatch@10.2.5": {
       "brace-expansion": "5.0.9"
     },
-    "fast-uri": "4.1.2",
+    "fast-uri": "4.1.3",
     "linkify-it": "6.1.0",
-    "sharp@0.33.5": "0.35.3"
+    "sharp@0.33.5": "0.35.3",
+    "browserslist": "^4.28.7",
+    "@xmldom/xmldom": "^0.8.15"
   }
 }

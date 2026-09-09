@@ -1,8 +1,7 @@
 import { generateJSON } from '@tiptap/core';
-import CharacterCount from '@tiptap/extension-character-count';
 import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
+import { CharacterCount, Placeholder } from '@tiptap/extensions';
 import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 
@@ -20,6 +19,9 @@ export const editorExtensions = [
     heading: {
       levels: [2, 3],
     },
+    // Configured explicitly below instead of using the kit's defaults.
+    link: false,
+    underline: false,
   }),
   Underline,
   Link.configure({
