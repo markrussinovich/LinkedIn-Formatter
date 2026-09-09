@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { AlertTriangle, FileText, Globe, Loader, Plus, Type, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, Check, FileText, Globe, Loader, Plus, Type, X } from 'lucide-react';
 
 import { getAcceptedDocumentTypes } from '../lib/importDocument';
 import {
   makeDocumentSource,
   makeTextSource,
+  withEditedText,
   withPastedText,
   type Source,
 } from '../lib/ai/sources';
@@ -23,23 +24,32 @@ const KIND_ICON = { doc: FileText, url: Globe, text: Type } as const;
 
 export function SourcesPanel({ sources, onAddSource, onUpdateSource, onRemoveSource }: SourcesPanelProps) {
   const [addMode, setAddMode] = useState<AddMode>(null);
-  const [textValue, setTextValue] = useState('');
-  const [textTitle, setTextTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewSource, setPreviewSource] = useState<Source | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  // Which pasted-text source is open in the inline editor. Only one text editor
+  // is open at a time (adding closes editing and vice versa).
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  function handleAddText() {
-    const trimmed = textValue.trim();
+  // Resolved from props (not stored) so an open viewer follows updates such as
+  // an AI-generated title arriving, and closes if the source is removed.
+  const previewSource = sources.find((source) => source.id === previewId) ?? null;
 
-    if (!trimmed) {
+  function handleAddText(title: string, text: string) {
+    onAddSource(makeTextSource(title, text));
+    setAddMode(null);
+  }
+
+  function handleOpen(source: Source) {
+    // Pasted text is the user's own content, so it opens for editing inline in
+    // the same form that created it. Files and pages open in the read-only viewer.
+    if (source.kind === 'text') {
+      setAddMode(null);
+      setEditingId((current) => (current === source.id ? null : source.id));
       return;
     }
 
-    onAddSource(makeTextSource(textTitle, trimmed));
-    setTextValue('');
-    setTextTitle('');
-    setAddMode(null);
+    setPreviewId(source.id);
   }
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -74,32 +84,22 @@ export function SourcesPanel({ sources, onAddSource, onUpdateSource, onRemoveSou
           <FileText aria-hidden="true" size={14} /> Add file
           <input type="file" accept={getAcceptedDocumentTypes()} disabled={busy} onChange={handleFile} />
         </label>
-        <button type="button" className="secondary-action" disabled={busy} onClick={() => setAddMode((mode) => (mode === 'text' ? null : 'text'))}>
+        <button
+          type="button"
+          className="secondary-action"
+          disabled={busy}
+          onClick={() => {
+            setEditingId(null);
+            setAddMode((mode) => (mode === 'text' ? null : 'text'));
+          }}
+        >
           <Type aria-hidden="true" size={14} /> Paste text
         </button>
         {busy ? <Loader aria-hidden="true" size={14} className="spin sources-busy" /> : null}
       </div>
 
       {addMode === 'text' ? (
-        <div className="sources-text-row">
-          <input
-            type="text"
-            value={textTitle}
-            placeholder="Title (optional)"
-            aria-label="Source title"
-            onChange={(event) => setTextTitle(event.target.value)}
-          />
-          <textarea
-            value={textValue}
-            placeholder="Paste reference text…"
-            aria-label="Source text"
-            rows={4}
-            onChange={(event) => setTextValue(event.target.value)}
-          />
-          <button type="button" className="primary-action" disabled={!textValue.trim()} onClick={handleAddText}>
-            <Plus aria-hidden="true" size={14} /> Add source
-          </button>
-        </div>
+        <SourceTextForm submitLabel="Add source" onSubmit={handleAddText} onCancel={() => setAddMode(null)} />
       ) : null}
 
       {error ? (
@@ -114,27 +114,31 @@ export function SourcesPanel({ sources, onAddSource, onUpdateSource, onRemoveSou
             <SourceItem
               key={source.id}
               source={source}
+              editing={editingId === source.id}
               onUpdate={onUpdateSource}
               onRemove={onRemoveSource}
-              onOpen={setPreviewSource}
+              onOpen={handleOpen}
+              onCloseEdit={() => setEditingId(null)}
             />
           ))}
         </ul>
       ) : null}
 
-      {previewSource ? <SourcePreview source={previewSource} onClose={() => setPreviewSource(null)} /> : null}
+      {previewSource ? <SourcePreview source={previewSource} onClose={() => setPreviewId(null)} /> : null}
     </details>
   );
 }
 
 interface SourceItemProps {
   source: Source;
+  editing: boolean;
   onUpdate: (id: string, source: Source) => void;
   onRemove: (id: string) => void;
   onOpen: (source: Source) => void;
+  onCloseEdit: () => void;
 }
 
-function SourceItem({ source, onUpdate, onRemove, onOpen }: SourceItemProps) {
+function SourceItem({ source, editing, onUpdate, onRemove, onOpen, onCloseEdit }: SourceItemProps) {
   const [paste, setPaste] = useState('');
   const needsText = source.status === 'needs-text';
 
@@ -144,10 +148,12 @@ function SourceItem({ source, onUpdate, onRemove, onOpen }: SourceItemProps) {
         className="source-item-head is-openable"
         role="button"
         tabIndex={0}
-        title="Double-click to open"
-        onDoubleClick={() => onOpen(source)}
+        aria-expanded={source.kind === 'text' ? editing : undefined}
+        title={source.kind === 'text' ? 'Click to edit' : 'Click to open'}
+        onClick={() => onOpen(source)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
             onOpen(source);
           }
         }}
@@ -159,12 +165,29 @@ function SourceItem({ source, onUpdate, onRemove, onOpen }: SourceItemProps) {
           type="button"
           className="source-remove"
           aria-label={`Remove ${source.title}`}
-          onClick={() => onRemove(source.id)}
-          onDoubleClick={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove(source.id);
+          }}
         >
           <X aria-hidden="true" size={14} />
         </button>
       </div>
+      {editing ? (
+        <SourceTextForm
+          // A title the AI generated stays blank in the field so leaving it
+          // alone keeps the title automatic.
+          initialTitle={source.needsTitle ? '' : source.title}
+          initialText={source.text}
+          submitLabel="Save source"
+          submitIcon={<Check aria-hidden="true" size={14} />}
+          onSubmit={(title, text) => {
+            onUpdate(source.id, withEditedText(source, title, text));
+            onCloseEdit();
+          }}
+          onCancel={onCloseEdit}
+        />
+      ) : null}
       {needsText ? (
         <div className="source-fallback">
           <p className="source-fallback-note">
@@ -183,6 +206,70 @@ function SourceItem({ source, onUpdate, onRemove, onOpen }: SourceItemProps) {
         </div>
       ) : null}
     </li>
+  );
+}
+
+// The one text editor used both to add a pasted source and to edit an existing
+// one, so both paths look and behave identically.
+interface SourceTextFormProps {
+  initialTitle?: string;
+  initialText?: string;
+  submitLabel: string;
+  submitIcon?: ReactNode;
+  onSubmit: (title: string, text: string) => void;
+  onCancel: () => void;
+}
+
+function SourceTextForm({
+  initialTitle = '',
+  initialText = '',
+  submitLabel,
+  submitIcon = <Plus aria-hidden="true" size={14} />,
+  onSubmit,
+  onCancel,
+}: SourceTextFormProps) {
+  const [title, setTitle] = useState(initialTitle);
+  const [text, setText] = useState(initialText);
+
+  function submit() {
+    if (text.trim()) {
+      onSubmit(title, text);
+    }
+  }
+
+  return (
+    <div
+      className="sources-text-row"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <input
+        type="text"
+        value={title}
+        placeholder="Title (optional)"
+        aria-label="Source title"
+        onChange={(event) => setTitle(event.target.value)}
+      />
+      <textarea
+        value={text}
+        placeholder="Paste reference text…"
+        aria-label="Source text"
+        rows={6}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <div className="sources-text-actions">
+        <button type="button" className="secondary-action" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="primary-action" disabled={!text.trim()} onClick={submit}>
+          {submitIcon} {submitLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 

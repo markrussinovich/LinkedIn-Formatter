@@ -36,7 +36,8 @@ export function HelpContent({ webApp = false }: { webApp?: boolean }) {
           <li>Ask the AI to write or improve the main draft from the bar above the editor.</li>
           <li>
             Give the AI material to use as its context with \"Reference sources for AI\": add a .txt/.md/.docx file or
-            pasted text. Sources are context only — they're never posted.
+            pasted text. Sources are context only — they're never posted. Click a pasted source to edit it inline; an
+            untitled paste is named automatically when AI is configured.
           </li>
           <li>Use "Adapt with AI" on a card to rewrite the post for that platform on demand.</li>
           <li>

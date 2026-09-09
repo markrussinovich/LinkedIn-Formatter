@@ -20,6 +20,10 @@ export interface Source {
   status: SourceStatus;
   // Present for url sources; lets the UI re-link and show the origin.
   url?: string;
+  // True when the user did not name the source, so the title is the generic
+  // placeholder. The app replaces it with an AI-generated title when an LLM is
+  // configured (see autoTitleSource in App.tsx).
+  needsTitle?: boolean;
 }
 
 const SOURCES_KEY = 'omnipost:sources-v1';
@@ -36,9 +40,49 @@ function newId(): string {
   return `src-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
+export const DEFAULT_TEXT_TITLE = 'Pasted text';
+
+// Longest AI-generated title we accept; anything longer is a sign the model
+// ignored the instruction, and the UI row can't show it anyway.
+export const MAX_TITLE_CHARS = 60;
+
 export function makeTextSource(title: string, text: string): Source {
   const trimmed = text.trim();
-  return { id: newId(), kind: 'text', title: title.trim() || 'Pasted text', text: trimmed, charCount: trimmed.length, status: 'ready' };
+  const named = title.trim();
+  return {
+    id: newId(),
+    kind: 'text',
+    title: named || DEFAULT_TEXT_TITLE,
+    text: trimmed,
+    charCount: trimmed.length,
+    status: 'ready',
+    needsTitle: named ? undefined : true,
+  };
+}
+
+// Apply an edit made in the source viewer. A blank title falls back to the
+// placeholder and re-arms auto-titling.
+export function withEditedText(source: Source, title: string, text: string): Source {
+  const named = title.trim();
+  return {
+    ...withPastedText(source, text),
+    title: named || DEFAULT_TEXT_TITLE,
+    needsTitle: named ? undefined : true,
+  };
+}
+
+// Normalize a model's title reply: first line only, stripped of quotes, list
+// bullets, and trailing punctuation, then capped. Returns '' if unusable.
+export function cleanSourceTitle(raw: string): string {
+  const line = raw.trim().split('\n').find((candidate) => candidate.trim()) ?? '';
+  const stripped = line
+    .trim()
+    .replace(/^(?:[-*•]|\d+[.)])\s+/, '')
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/[.,;:]+$/, '')
+    .trim();
+
+  return stripped.length > MAX_TITLE_CHARS ? `${stripped.slice(0, MAX_TITLE_CHARS - 1).trimEnd()}…` : stripped;
 }
 
 // Pull plain text out of an uploaded .txt/.md/.docx by reusing the existing draft

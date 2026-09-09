@@ -10,10 +10,11 @@ interface SourcePreviewProps {
 
 const KIND_LABEL = { doc: 'File', url: 'Link', text: 'Pasted text' } as const;
 
-// Read-only viewer for a reference source's extracted text, opened by
-// double-clicking a source in the SourcesPanel. Uploaded files keep only their
-// extracted text (not the original binary), so this shows exactly what the AI
-// sees. URL sources also expose a link out to the original page.
+// Read-only viewer for a file or page source's extracted text, opened by
+// clicking it in the SourcesPanel. Uploaded files keep only their extracted text
+// (not the original binary), so this shows exactly what the AI sees. Pasted text
+// is edited inline in the panel instead. URL sources also expose a link out to
+// the original page.
 export function SourcePreview({ source, onClose }: SourcePreviewProps) {
   useEscape(onClose);
 

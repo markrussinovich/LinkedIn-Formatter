@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildSourcesBlock,
+  cleanSourceTitle,
   makeTextSource,
+  withEditedText,
   withPastedText,
+  DEFAULT_TEXT_TITLE,
   MAX_SOURCE_CHARS,
+  MAX_TITLE_CHARS,
   MAX_TOTAL_SOURCE_CHARS,
   type Source,
 } from './sources';
@@ -20,6 +24,37 @@ describe('sources', () => {
     expect(source.text).toBe('hello');
     expect(source.charCount).toBe(5);
     expect(source.status).toBe('ready');
+    expect(source.needsTitle).toBeUndefined();
+  });
+
+  it('marks an unnamed text source for auto-titling', () => {
+    const source = makeTextSource('   ', 'hello');
+    expect(source.title).toBe(DEFAULT_TEXT_TITLE);
+    expect(source.needsTitle).toBe(true);
+  });
+
+  it('withEditedText updates text and title, re-arming auto-titling when blank', () => {
+    const source = makeTextSource('Notes', 'old');
+
+    const renamed = withEditedText(source, 'Launch plan', ' new body ');
+    expect(renamed.title).toBe('Launch plan');
+    expect(renamed.text).toBe('new body');
+    expect(renamed.charCount).toBe(8);
+    expect(renamed.needsTitle).toBeUndefined();
+
+    const cleared = withEditedText(source, '', 'body');
+    expect(cleared.title).toBe(DEFAULT_TEXT_TITLE);
+    expect(cleared.needsTitle).toBe(true);
+  });
+
+  it('cleanSourceTitle strips model decoration and caps length', () => {
+    expect(cleanSourceTitle(' "Launch plan." ')).toBe('Launch plan');
+    expect(cleanSourceTitle('- Launch plan\nExtra commentary')).toBe('Launch plan');
+    expect(cleanSourceTitle('   ')).toBe('');
+
+    const long = cleanSourceTitle('x'.repeat(200));
+    expect(long).toHaveLength(MAX_TITLE_CHARS);
+    expect(long.endsWith('…')).toBe(true);
   });
 
   it('withPastedText flips a needs-text source to ready', () => {

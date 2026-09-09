@@ -18,14 +18,14 @@ import { loadTheme, saveTheme, type Theme } from './lib/theme';
 import { selectAutofit } from './lib/ai/autofit';
 import { isLlmReady, loadLlmConfig, saveLlmConfig, type LlmConfig } from './lib/ai/config';
 import { docToMarkdown, docToPlainText } from './lib/ai/docText';
-import { buildSourcesBlock, loadSources, saveSources, type Source } from './lib/ai/sources';
+import { buildSourcesBlock, cleanSourceTitle, loadSources, saveSources, MAX_TITLE_CHARS, type Source } from './lib/ai/sources';
 import { markdownToTipTap } from './lib/markdownToTipTap';
 import { fetchLinkPreview, lastUrlInText, shouldRefreshLinkPreview } from './lib/linkPreview';
 import { restoreDraftAttachments, revokeAttachment, serializeAttachmentsForDraft, type Attachment, type LinkPreview } from './lib/media';
 import { clearActiveAttachment, loadActiveAttachment, putActiveAttachment } from './lib/attachmentStore';
 import { generateFit } from './lib/ai/fit';
 import { generateText } from './lib/ai/llmClient';
-import { buildAuthorRequest } from './lib/ai/prompts';
+import { buildAuthorRequest, buildSourceTitleRequest } from './lib/ai/prompts';
 import { APP_NAME } from './lib/constants';
 import type { EditorNode } from './lib/exportText';
 import {
@@ -53,7 +53,9 @@ import {
 } from './lib/workspace';
 
 const AUTOFIT_IDLE_MS = 3000;
-
+// Titles are one short line, but reasoning-class models spend tokens thinking
+// before they answer, so the cap has to leave room for that.
+const TITLE_MAX_TOKENS = 256;
 // Start blank rather than with sample content; the editor shows its placeholder.
 const EMPTY_DOCUMENT: EditorNode = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -488,10 +490,41 @@ function App() {
 
   function handleAddSource(source: Source) {
     setSources((prev) => [...prev, source]);
+    void autoTitleSource(source);
   }
 
   function handleUpdateSource(id: string, source: Source) {
     setSources((prev) => prev.map((existing) => (existing.id === id ? source : existing)));
+    void autoTitleSource(source);
+  }
+
+  // Name an untitled pasted source with the LLM. Silent no-op when AI isn't
+  // configured or the request fails — the placeholder title still works.
+  async function autoTitleSource(source: Source) {
+    if (!source.needsTitle || !aiReady || !source.text.trim()) {
+      return;
+    }
+
+    try {
+      const { system, prompt } = buildSourceTitleRequest(source.text, MAX_TITLE_CHARS);
+      const reply = await generateText({ config: llmConfig, system, prompt, maxTokens: TITLE_MAX_TOKENS });
+      const title = cleanSourceTitle(reply);
+
+      if (!title) {
+        return;
+      }
+
+      setSources((prev) =>
+        prev.map((existing) =>
+          // Skip if the user renamed or replaced the source while we waited.
+          existing.id === source.id && existing.needsTitle && existing.text === source.text
+            ? { ...existing, title, needsTitle: undefined }
+            : existing,
+        ),
+      );
+    } catch {
+      // Keep the placeholder title.
+    }
   }
 
   function handleRemoveSource(id: string) {

@@ -2230,6 +2230,16 @@ h2 {
   justify-self: start;
 }
 
+.sources-text-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* The inline editor for an existing pasted source sits under its row. */
+.source-item .sources-text-row {
+  margin: 8px 0 2px;
+}
+
 .sources-error {
   display: inline-flex;
   align-items: center;
